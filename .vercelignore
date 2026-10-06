@@ -1,0 +1,13 @@
+.git/
+.vercel/
+.venv/
+.pytest_cache/
+.qa/
+**/__pycache__/
+*.db
+*.db-shm
+*.db-wal
+tests/
+docs/
+DESIGN.md
+PRODUCT.md
