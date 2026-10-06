@@ -4,6 +4,7 @@ from decimal import Decimal
 import json
 import os
 from pathlib import Path
+import tempfile
 from typing import Literal
 
 from fastapi import Depends, FastAPI, Query, Response
@@ -75,9 +76,18 @@ def serialize(trip: Trip):
             "amount": trip.amount, "payment": trip.payment, "commission": trip.commission}
 
 
+def default_database_url():
+    configured = os.getenv("DATABASE_URL")
+    if configured:
+        return configured
+    # Vercel has a read-only application directory and ephemeral scratch storage.
+    directory = Path(tempfile.gettempdir()) if os.getenv("VERCEL") == "1" else ROOT
+    return f"sqlite:///{(directory / 'driver.db').as_posix()}"
+
+
 def create_app(database_url=None, *, seed=True):
     engine = create_engine(
-        database_url or os.getenv("DATABASE_URL", f"sqlite:///{ROOT / 'driver.db'}"),
+        database_url or default_database_url(),
         connect_args={"check_same_thread": False},
     )
     factory = sessionmaker(engine, expire_on_commit=False)

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app.main import Trip, create_app
+from app.main import ROOT, Trip, create_app, default_database_url
 
 
 @pytest.fixture
@@ -90,3 +90,30 @@ def test_persistence_and_seed_idempotency(tmp_path):
     with TestClient(create_app(url)) as client:
         assert len(client.get('/api/trips?date=2026-10-01').json()) == 3
         assert client.get('/').status_code == 200
+
+
+def test_vercel_uses_writable_temporary_database(monkeypatch, tmp_path):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.setenv('VERCEL', '1')
+    monkeypatch.setattr('app.main.tempfile.gettempdir', lambda: str(tmp_path))
+    assert default_database_url() == f"sqlite:///{(tmp_path / 'driver.db').as_posix()}"
+    with TestClient(create_app()) as client:
+        assert client.get('/').status_code == 200
+        for path in ['/static/style.css', '/static/app.js', '/static/reference.png',
+                     '/static/fonts/fonts.css', '/static/fonts/golos-0.ttf']:
+            assert client.get(path).status_code == 200
+        assert client.get('/api/summary?date=2026-10-01').json()['net'] == 3315
+        assert client.post('/api/trips', json=trip(id='vercel-test')).status_code == 201
+    assert (tmp_path / 'driver.db').is_file()
+
+
+def test_local_default_keeps_persistent_database(monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.delenv('VERCEL', raising=False)
+    assert default_database_url() == f"sqlite:///{(ROOT / 'driver.db').as_posix()}"
+
+
+def test_database_url_overrides_vercel_default(monkeypatch):
+    monkeypatch.setenv('VERCEL', '1')
+    monkeypatch.setenv('DATABASE_URL', 'sqlite:////custom/diary.db')
+    assert default_database_url() == 'sqlite:////custom/diary.db'
